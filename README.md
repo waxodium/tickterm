@@ -46,29 +46,29 @@ git clone https://github.com/waxodium/tickterm.git
 ```
 
 2. Use Makefile to install
-```yaml
+```bash
 cd tickterm
 make install
 ```
 
 ## Usage
 To get help, run:
-```toml
+```bash
 tickterm --help
 ```
 
 - Underline:
-```toml
+```bash
 tickterm --underline
 ```
 
 - Zen Mode:
-```toml
+```bash
 tickterm --zen
 ```
 
 - Change Clock's **ASCII Number** style:
-```toml
+```bash
 tickterm --font="[customFont]"
 ```
 
