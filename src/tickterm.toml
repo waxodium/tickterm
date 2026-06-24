@@ -1,0 +1,11 @@
+[settings]
+time_format = "HH:mm:ss"
+accent_color = "#e5989b"
+default_font = "modular"
+underline_char = "━"
+zen_mode = false
+show_underline = false
+show_date = true
+date_format = "dddd, MMMM dd, yyyy"
+date_color = "#FFFFFF"
+underline_color = "#FA8072"
