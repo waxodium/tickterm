@@ -1,7 +1,7 @@
 [settings]
 time_format = "HH:mm:ss"
 accent_color = "#e5989b"
-default_font = "modular"
+default_font = "rammstein"
 underline_char = "━"
 zen_mode = false
 show_underline = false
