@@ -69,7 +69,7 @@ tickterm --zen
 
 - Change Clock's **ASCII Number** style:
 ```bash
-tickterm --font="[customFont]"
+tickterm --font="[FONT]"
 ```
 
 ## LICENSE
