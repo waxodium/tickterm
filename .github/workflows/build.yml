@@ -19,7 +19,7 @@ jobs:
           nim-version: 'stable'
 
       - name: Compile Binary
-        run: nim c -d:release --app:console tickterm.nim
+        run: nim c -d:release --app:console src/tickterm.nim
 
       - name: Upload Binary to Release
         uses: softprops/action-gh-release@v2
