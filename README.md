@@ -23,10 +23,10 @@ A *fluid*, **customizable** clock app in the terminal
 
 ## Cool Stuff 🤩
 - **Underline** clock tick indicates the **SS** format 🕧
-- **Responsive** Clock to *any* window **size**
-- **Zen** mode, best for work focusing 🎯 or *aesthetic* 💮
+- *Responsive* layout for any terminal **size**
+- **Zen** mode, best for work focusing 🎯 or *aesthetic*
 - *Customizable* ASCII number style 🔢
-- Very configurable! change the
+- Highly configurable:
    - default options 🎛
    - colors 🌈
    - date & time format 📅
@@ -34,11 +34,11 @@ A *fluid*, **customizable** clock app in the terminal
  
 ## Install
 ### Installation from source
-Requirement:
+Requirements:
   - [nim](https://nim-lang.org/) programming langauge
   - gcc and it's dependencies
 
-Install from source Step by Steps
+#### Build from source
 
 1. clone `tickterm` repository
 ```yaml
@@ -51,7 +51,7 @@ cd tickterm
 make install
 ```
 
-## Usage
+## Sample Usage
 To get help, run:
 ```bash
 tickterm --help
@@ -67,10 +67,15 @@ tickterm --underline
 tickterm --zen
 ```
 
-- Change Clock's **ASCII Number** style:
+- Change the clock's **ASCII number** style:
 ```bash
-tickterm --font="[FONT]"
+# Built-in font
+tickterm --font rammstein
+
+# Custom FIGlet font
+tickterm --font ./font.flf
 ```
 
 ## LICENSE
-tickterm is held on to [Apache License 2.0](./LICENSE). See the LICENSE file for full detail: [LICENSE](./LICENSE);
+TickTerm is licensed under the [Apache License 2.0](./LICENSE). See the LICENSE file for full detail: [LICENSE](./LICENSE);
+
