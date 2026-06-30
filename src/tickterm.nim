@@ -1,4 +1,4 @@
-import std/[os, times, strutils, terminal, strformat, sequtils, exitprocs, posix, termios, unicode, tables]
+import std/[os, times, strutils, terminal, strformat, exitprocs, posix, termios, unicode, tables]
 import parsetoml, cligen
 
 const
@@ -51,6 +51,32 @@ proc parseFont(raw: string): Table[string, seq[string]] =
       result[key] = blockLines
     else:
       i += 1
+
+proc parseFlf(path: string): Table[string, seq[string]] =
+  let lines = readFile(path).splitLines()
+  if lines.len == 0 or not lines[0].startsWith("flf2a"): 
+    return
+
+  let header = lines[0].split(' ')
+  let height = parseInt(header[1])
+  let commentLines = parseInt(header[5])
+
+  var idx = 1 + commentLines
+  var curChar = 32
+
+  while idx < lines.len and curChar <= 126:
+    var glyphLines: seq[string] = @[]
+    for h in 0 ..< height:
+      if idx < lines.len:
+        var line = lines[idx]
+        while line.len > 0 and line[^1] == '@':
+          line = line[0..^2]
+        glyphLines.add(line)
+        idx += 1
+    
+    result[$chr(curChar)] = glyphLines
+    curChar += 1
+
 
 proc ansi(hex: string): string =
   let h = hex.strip(chars = {'#'})
@@ -366,22 +392,35 @@ proc load(ctx: var App) =
     glow:     s.str("underline_color", "#ffffff")
   )
 
-proc tickterm(font = "", zen = false, underline = false) =
+proc tickterm(font = "", zen = false, underline = false, list = false) =
   autoGenerateConfigs()
   app.load()
   
-  if font != "": 
-    app.cfg.font = font
+  if list:
+    echo "Available built-in fonts:"
+    for name in app.fonts.keys:
+      echo &"  - {name}"
+    quit(0)
+
+  if font != "":
+    if font.endsWith(".flf") and fileExists(font):
+      app.fonts["externalFLF"] = parseFlf(font)
+      app.cfg.font = "externalFLF"
+    else:
+      app.cfg.font = font
+  
   if zen: 
     app.cfg.zen = true
   if underline: 
     app.cfg.strip = true
     
+
   app.run()
 
 when isMainModule:
   dispatch(tickterm, help = {
     "font": "Apply specified font",
     "zen": "Enable Zen mode (HH:mm)",
-    "underline": "Underline the seconds duration indicator"
+    "underline": "Underline the seconds duration indicator",
+    "list": "List all available built-in fonts"
   })
