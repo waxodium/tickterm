@@ -27,6 +27,7 @@ A *fluid*, **customizable** clock app in the terminal
 - **Zen** mode, best for work focusing 🎯 or *aesthetic*
 - *Customizable* ASCII number style 🔢 with:
    - `.flf` files
+- Can use fonts directly from FIGlet.
 - Highly configurable:
    - default options 🎛
    - colors 🌈
@@ -70,11 +71,14 @@ tickterm --zen
 
 - Change the clock's **ASCII number** style:
 ```bash
-# Built-in font
+# Built-in tickterm's font
 tickterm --font rammstein
 
-# Custom FIGlet font
+# Custom FIGlet font file
 tickterm --font ./font.flf
+
+# directly from FIGlet fonts library
+tickterm --font smslant
 ```
 
 ## LICENSE
