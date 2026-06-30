@@ -25,7 +25,8 @@ A *fluid*, **customizable** clock app in the terminal
 - **Underline** clock tick indicates the **SS** format 🕧
 - *Responsive* layout for any terminal **size**
 - **Zen** mode, best for work focusing 🎯 or *aesthetic*
-- *Customizable* ASCII number style 🔢
+- *Customizable* ASCII number style 🔢 with:
+   - `.flf` files
 - Highly configurable:
    - default options 🎛
    - colors 🌈
