@@ -1,4 +1,4 @@
-import std/[os, times, strutils, terminal, strformat, exitprocs, posix, termios, unicode, tables]
+import std/[os, times, strutils, terminal, strformat, exitprocs, posix, termios, unicode, tables, osproc, streams]
 import parsetoml, cligen
 
 const
@@ -40,43 +40,116 @@ proc parseFont(raw: string): Table[string, seq[string]] =
 
     if line.endsWith(":"):
       let key = line[0..^2]
-      i += 1
+      inc i
       var blockLines: seq[string] = @[]
 
       while i < lines.len and not lines[i].endsWith(":"):
-        if lines[i].len > 0: 
+        if lines[i].len > 0:
           blockLines.add(lines[i])
-        i += 1
-        
+        inc i
+
       result[key] = blockLines
     else:
-      i += 1
+      inc i
+
 
 proc parseFlf(path: string): Table[string, seq[string]] =
   let lines = readFile(path).splitLines()
-  if lines.len == 0 or not lines[0].startsWith("flf2a"): 
+  if lines.len == 0 or not lines[0].startsWith("flf2a"):
     return
 
   let header = lines[0].split(' ')
   let height = parseInt(header[1])
   let commentLines = parseInt(header[5])
 
+  let hardblank = lines[0][5]
+
   var idx = 1 + commentLines
+  
+  let endmark = lines[idx][^1]
   var curChar = 32
 
   while idx < lines.len and curChar <= 126:
     var glyphLines: seq[string] = @[]
+
     for h in 0 ..< height:
       if idx < lines.len:
         var line = lines[idx]
-        while line.len > 0 and line[^1] == '@':
-          line = line[0..^2]
-        glyphLines.add(line)
-        idx += 1
-    
-    result[$chr(curChar)] = glyphLines
-    curChar += 1
 
+        if line.len > 0 and line[^1] == endmark:
+          line = line[0..^2]
+        if line.len > 0 and line[^1] == endmark:
+          line = line[0..^2]
+
+        if hardblank != ' ':
+          for i in 0 ..< line.len:
+            if line[i] == hardblank:
+              line[i] = ' '
+
+        glyphLines.add(line)
+        inc idx
+
+    result[$chr(curChar)] = glyphLines
+    inc curChar
+
+proc getFigletFontDir(): string =
+  try:
+    let p = startProcess(
+      "figlet",
+      args = @["-I2"],
+      options = {poUsePath, poStdErrToStdOut}
+    )
+
+    let s = outputStream(p)
+    let output = s.readAll().strip()
+
+    discard p.waitForExit()
+
+    let dir = output.strip()
+
+    if dir.len > 0 and dirExists(dir):
+      return dir
+  except:
+    discard
+
+  let list = @[
+    "/usr/share/figlet/fonts",
+    "/usr/share/figlet",
+    "/usr/local/share/figlet/fonts",
+    "/usr/local/share/figlet"
+  ]
+
+  for c in list:
+    if dirExists(c):
+      return c
+
+  return ""
+
+proc resolveFont(ctx: var App, name: string): bool =
+  if ctx.fonts.hasKey(name):
+    return true
+
+  if fileExists(name):
+    ctx.fonts[name] = parseFlf(name)
+    return true
+
+  if fileExists(name & ".flf"):
+    ctx.fonts[name] = parseFlf(name & ".flf")
+    return true
+
+  let figletDir = getFigletFontDir()
+  if figletDir.len > 0:
+    let path = figletDir / (name & ".flf")
+    if fileExists(path):
+      ctx.fonts[name] = parseFlf(path)
+      return true
+
+  let home = expandTilde("~/.config/tickterm/fonts/" & name & ".flf")
+  if fileExists(home):
+    ctx.fonts[name] = parseFlf(home)
+    return true
+
+  return false
 
 proc ansi(hex: string): string =
   let h = hex.strip(chars = {'#'})
@@ -87,7 +160,7 @@ proc ansi(hex: string): string =
       let g = parseHexInt(h[2..3])
       let b = parseHexInt(h[4..5])
       return &"\e[38;2;{r};{g};{b}m"
-    except ValueError: 
+    except ValueError:
       discard
   elif h.len == 3:
     try:
@@ -95,7 +168,7 @@ proc ansi(hex: string): string =
       let g = parseHexInt($h[1] & $h[1])
       let b = parseHexInt($h[2] & $h[2])
       return &"\e[38;2;{r};{g};{b}m"
-    except ValueError: 
+    except ValueError:
       discard
 
   return "\e[37m"
@@ -106,41 +179,40 @@ proc plain(s: string): string =
 
   while i < s.len:
     if s[i] == '\e':
-      i += 2
-      while i < s.len and s[i] in {'0'..'9', ';', '?'}: 
+      inc i, 2
+      while i < s.len and s[i] in {'0'..'9', ';', '?'}:
         inc i
-      if i < s.len and s[i] in {'A'..'Z', 'a'..'z'}: 
+      if i < s.len and s[i] in {'A'..'Z', 'a'..'z'}:
         inc i
       continue
-      
+
     result.add(s[i])
     inc i
 
-proc width(s: string): int = 
+proc width(s: string): int =
   s.plain().runeLen()
 
 proc width(glyph: seq[string]): int =
-  for line in glyph: 
+  for line in glyph:
     result = max(result, line.width())
-    
-  if result == 0: 
+  if result == 0:
     result = 1
 
 proc glyph(ctx: App, c: char, font: string): seq[string] =
   let k = $c
-  
+
   if ctx.fonts.hasKey(font) and ctx.fonts[font].hasKey(k):
     return ctx.fonts[font][k]
-    
+
   if ctx.fonts.hasKey("simple") and ctx.fonts["simple"].hasKey(k):
     return ctx.fonts["simple"][k]
-    
+
   return @[$c]
 
 proc span(ctx: App, text, font: string): int =
   for i, c in text:
     result += ctx.glyph(c, font).width()
-    if i < text.len - 1: 
+    if i < text.len - 1:
       result += 2
 
 proc restore(ctx: var App) =
@@ -154,8 +226,7 @@ proc uncook(ctx: var App) =
       var copy = ctx.term
       copy.c_lflag = copy.c_lflag and not (ECHO or ICANON or IEXTEN)
       copy.c_iflag = copy.c_iflag and not (BRKINT or ICRNL or INPCK or ISTRIP or IXON)
-      copy.c_oflag = copy.c_oflag and not (OPOST)
-      
+      copy.c_oflag = copy.c_oflag and not OPOST
       discard tcSetAttr(STDIN_FILENO, TCSAFLUSH, addr copy)
       ctx.raw = true
 
@@ -201,7 +272,7 @@ proc run(ctx: var App) =
       ctx.rows = h
       ctx.front.resize(w, h)
       ctx.back.resize(w, h)
-      
+
     ctx.back.wipe()
 
     let stamp = now()
@@ -215,16 +286,16 @@ proc run(ctx: var App) =
     let dateW  = date.width()
 
     var mode = if ctx.cfg.zen: 2 else: 3
-    if w < fullW + 4: 
+    if w < fullW + 4:
       mode = if w >= max(shortW, dateW) + 4: 2 else: 1
-      
-    let text = 
-      if mode == 3: full 
-      elif mode == 2: short 
+
+    let text =
+      if mode == 3: full
+      elif mode == 2: short
       else: tiny
-      
+
     let lined = ctx.cfg.strip
-    let dated = ctx.cfg.dated and (mode >= 2)
+    let dated = ctx.cfg.dated and mode >= 2
 
     var glyphs: seq[seq[string]]
     var total = 0
@@ -232,45 +303,41 @@ proc run(ctx: var App) =
 
     for i, c in text:
       var g = ctx.glyph(c, ctx.cfg.font)
-      if g.len == 1 and g[0] == $c and ctx.cfg.font != "simple": 
+      if g.len == 1 and g[0] == $c and ctx.cfg.font != "simple":
         g = ctx.glyph(c, "simple")
 
-
-        
       total += g.width()
-      if i < text.len - 1: 
+      if i < text.len - 1:
         total += 2
-        
+
       tallest = max(tallest, g.len)
       glyphs.add(g)
 
     var blockH = tallest
-    if lined: blockH += 2
-    if dated: blockH += 2
+    if lined: inc blockH
+    if dated: inc blockH
 
     let left = max(1, (w - total) div 2 + 1)
     let top  = max(1, (h - blockH) div 2 + 1)
-    var x    = left
+    var x = left
     let accent = ansi(ctx.cfg.accent)
 
-    # Draw Text
     for g in glyphs:
       let gw = g.width()
       let pad = (tallest - g.len) div 2
-      
+
       for r, line in g:
         let y = top + pad + r
         if y in 1..h:
           var cx = x
           for rune in line.toRunes:
-            if cx in 1..w: 
+            if cx in 1..w:
               ctx.back[y-1][cx-1] = Cell(sym: $rune, ansi: accent)
             inc cx
       x += gw + 2
-      
+
     var cursorY = top + tallest
 
-    # Draw Ruler / Duration Indicator
     if lined:
       inc cursorY
       if cursorY <= h:
@@ -279,27 +346,25 @@ proc run(ctx: var App) =
         let fill = ((sec / 60.0) * barW.float).int
         let barX = max(1, left + (total - barW) div 2)
         let glow = ansi(ctx.cfg.glow)
-        
+
         for i in 0 ..< fill:
           let cx = barX + i
-          if cx in 1..w: 
+          if cx in 1..w:
             ctx.back[cursorY-1][cx-1] = Cell(sym: ctx.cfg.ruler, ansi: glow)
       inc cursorY
 
-    # Draw le Date :)
     if dated:
       inc cursorY
       if cursorY <= h:
         let dx = max(1, left + (total - dateW) div 2)
         let tint = ansi(ctx.cfg.tint)
         var cx = dx
-        
+
         for rune in date.toRunes:
-          if cx in 1..w: 
+          if cx in 1..w:
             ctx.back[cursorY-1][cx-1] = Cell(sym: $rune, ansi: tint)
           inc cx
 
-    # Rendering da Buffer
     ctx.buf.setLen(0)
     var activeAnsi = "NONE"
     var lastR = -1
@@ -309,93 +374,86 @@ proc run(ctx: var App) =
       for c in 0 ..< w:
         let curr = ctx.back[r][c]
         let prev = ctx.front[r][c]
-        
+
         if curr.sym != prev.sym or curr.ansi != prev.ansi:
-          if lastR != r or lastC != c: 
+          if lastR != r or lastC != c:
             ctx.buf.add(&"\e[{r+1};{c+1}H")
-            
+
           if curr.ansi != activeAnsi:
             ctx.buf.add(if curr.ansi == "": "\e[0m" else: curr.ansi)
             activeAnsi = curr.ansi
-            
+
           ctx.buf.add(curr.sym)
           lastR = r
           lastC = c + 1
-          
+
     if ctx.buf.len > 0:
       stdout.write(ctx.buf)
       stdout.flushFile()
-      
+
     swap(ctx.front, ctx.back)
     discard tcflush(STDIN_FILENO, TCIFLUSH)
     sleep(33)
 
 proc autoGenerateConfigs() =
   let home = expandTilde("~/.config/tickterm")
-  
-  if not dirExists(home): 
+
+  if not dirExists(home):
     createDir(home)
-    
-  if not fileExists(home / "tickterm.toml"): 
+
+  if not fileExists(home / "tickterm.toml"):
     writeFile(home / "tickterm.toml", DefaultConfig)
+
+proc loadBuiltins(ctx: var App) =
+  ctx.fonts["rammstein"] = parseFont(RammsteinRaw)
+  ctx.fonts["rectangles"] = parseFont(RectanglesRaw)
 
 proc load(ctx: var App) =
   let exe = getAppDir()
   let home = expandTilde("~/.config/tickterm")
   var cP: string
-  
+
   for p in [
-    home / "tickterm.toml", 
-    exe / "tickterm.toml", 
-    exe.parentDir() / "tickterm.toml", 
+    home / "tickterm.toml",
+    exe / "tickterm.toml",
+    exe.parentDir() / "tickterm.toml",
     "tickterm.toml"
   ]:
-    if fileExists(p): 
+    if fileExists(p):
       cP = p
       break
-      
-  if cP == "": 
+
+  if cP == "":
     quit(&"Error: Missing config in {home}")
-    
+
   let t = parseToml.parseFile(cP)
   let s = if t.hasKey("settings"): t["settings"] else: nil
 
-  template str(n: TomlValueRef, key, fallback: string): string = 
+  template str(n: TomlValueRef, key, fallback: string): string =
     if n != nil and n.hasKey(key): n[key].getStr() else: fallback
-    
-  template bll(n: TomlValueRef, key: string, fallback: bool): bool = 
+
+  template bll(n: TomlValueRef, key: string, fallback: bool): bool =
     if n != nil and n.hasKey(key): n[key].getBool() else: fallback
 
-  
-  # Right here ! :)
-
-
-
-  ctx.fonts["rammstein"]  = parseFont(RammsteinRaw)
-  ctx.fonts["rectangles"] = parseFont(RectanglesRaw)
-  
-
-  # But sort of cool way to do
-
-
+  loadBuiltins(ctx)
 
   ctx.cfg = Config(
-    clock:    s.str("time_format", "HH:mm:ss"),
-    accent:   s.str("accent_color", "#ffffff"),
-    font:     s.str("default_font", "simple"),
-    ruler:    s.str("underline_char", "─"),
-    zen:      s.bll("zen_mode", false),
-    strip:    s.bll("show_underline", true),
-    dated:    s.bll("show_date", true),
+    clock: s.str("time_format", "HH:mm:ss"),
+    accent: s.str("accent_color", "#ffffff"),
+    font: s.str("default_font", "simple"),
+    ruler: s.str("underline_char", "─"),
+    zen: s.bll("zen_mode", false),
+    strip: s.bll("show_underline", true),
+    dated: s.bll("show_date", true),
     calendar: s.str("date_format", "yyyy-MM-dd"),
-    tint:     s.str("date_color", "#aaaaaa"),
-    glow:     s.str("underline_color", "#ffffff")
+    tint: s.str("date_color", "#aaaaaa"),
+    glow: s.str("underline_color", "#ffffff")
   )
 
 proc tickterm(font = "", zen = false, underline = false, list = false) =
   autoGenerateConfigs()
   app.load()
-  
+
   if list:
     echo "Available built-in fonts:"
     for name in app.fonts.keys:
@@ -403,17 +461,20 @@ proc tickterm(font = "", zen = false, underline = false, list = false) =
     quit(0)
 
   if font != "":
-    if font.endsWith(".flf") and fileExists(font):
-      app.fonts["externalFLF"] = parseFlf(font)
-      app.cfg.font = "externalFLF"
+    if fileExists(font) and font.endsWith(".flf"):
+      let key = splitFile(font).name
+      app.fonts[key] = parseFlf(font)
+      app.cfg.font = key
     else:
-      app.cfg.font = font
-  
-  if zen: 
+      if app.resolveFont(font):
+        app.cfg.font = font
+      else:
+        quit("Error: font not found: " & font)
+
+  if zen:
     app.cfg.zen = true
-  if underline: 
+  if underline:
     app.cfg.strip = true
-    
 
   app.run()
 
