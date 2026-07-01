@@ -1,10 +1,13 @@
 import std/[os, times, strutils, terminal, strformat, exitprocs, posix, termios, unicode, tables, osproc, streams]
-import parsetoml, cligen
+import parsetoml
+import std/parseopt
 
 const
   DefaultConfig = staticRead("./tickterm.toml")
   RammsteinRaw  = staticRead("./internal/rammstein.txt")
   RectanglesRaw = staticRead("./internal/rectangles.txt")
+
+  VERSION = "tickterm v0.0.1"
 
 type
   Config = object
@@ -450,38 +453,69 @@ proc load(ctx: var App) =
     glow: s.str("underline_color", "#ffffff")
   )
 
-proc tickterm(font = "", zen = false, underline = false, list = false) =
+# cool trick
+proc color(text: string, code: string): string =
+  "\e[" & code & "m" & text & "\e[0m"
+
+proc tickterm() =
   autoGenerateConfigs()
   app.load()
 
-  if list:
-    echo "Available built-in fonts:"
-    for name in app.fonts.keys:
-      echo &"  - {name}"
-    quit(0)
+  var p = initOptParser()
+  
+  while true:
+    p.next()
+    case p.kind
+    of cmdEnd: break
+    of cmdLongOption, cmdShortOption:
+      case p.key
+      of "font", "f":
+        let fontName = if p.val == "":
+                         p.next()
+                         p.key
+                       else:
+                         p.val
+        if app.resolveFont(fontName): 
+          app.cfg.font = fontName
+        else: 
+          quit("Error: font not found: ".color("31") & fontName)
+      
+      of "zen", "z": app.cfg.zen = true
+      
+      of "underline", "u": app.cfg.strip = true
+      
+      of "list", "l":
+        echo "Available built-in fonts:"
+        for name in app.fonts.keys:
+          echo "  - " & name
+        quit(0)
+      
+      of "version", "v":
+        echo "0.1.0"
+        quit(0)
+      
+      of "help", "h":
+        echo "A fluid, customizable clock app in the terminal\n"
+        echo "\e[4mUsage:\e[24m " & "tickterm".color("33") & " [options]\n"
+        echo "\e[4mOptions:\e[24m"
+        echo "  -f, --font " & "<name>".color("31") & "   Set font"
+        echo "  -z, --zen            Enable Zen mode"
+        echo "  -u, --underline      Enable underline"
+        echo "  -l, --list           List fonts"
+        
+        echo "\n"
 
-  if font != "":
-    if fileExists(font) and font.endsWith(".flf"):
-      let key = splitFile(font).name
-      app.fonts[key] = parseFlf(font)
-      app.cfg.font = key
-    else:
-      if app.resolveFont(font):
-        app.cfg.font = font
-      else:
-        quit("Error: font not found: " & font)
-
-  if zen:
-    app.cfg.zen = true
-  if underline:
-    app.cfg.strip = true
+        echo $VERSION
+        echo "TickTerm home page: " & "<https://github.com/waxodium/tickterm>".color("34")
+        quit(0)
+      else: 
+        quit("Error: Unknown Option: ".color("31") & p.key)
+    of cmdArgument: discard
 
   app.run()
 
 when isMainModule:
-  dispatch(tickterm, help = {
-    "font": "Apply specified font",
-    "zen": "Enable Zen mode (HH:mm)",
-    "underline": "Underline the seconds duration indicator",
-    "list": "List all available built-in fonts"
-  })
+  tickterm()
+
+
+
