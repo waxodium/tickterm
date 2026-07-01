@@ -17,6 +17,9 @@ jobs:
         uses: jiro4989/setup-nim-action@v1
         with:
           nim-version: 'stable'
+      
+      - name: Install Dependencies
+        run: nimble install -y
 
       - name: Compile Binary
         run: nim c -d:release --app:console src/tickterm.nim
