@@ -1,6 +1,5 @@
 import std/[os, times, strutils, terminal, strformat, exitprocs, posix, termios, unicode, tables, osproc, streams]
-import parsetoml
-import std/parseopt
+import std/[parseopt, parsecfg]
 
 const
   DefaultConfig = staticRead("./tickterm.toml")
@@ -414,43 +413,39 @@ proc loadBuiltins(ctx: var App) =
 proc load(ctx: var App) =
   let exe = getAppDir()
   let home = expandTilde("~/.config/tickterm")
-  var cP: string
+  var cP = ""
 
-  for p in [
-    home / "tickterm.toml",
-    exe / "tickterm.toml",
-    exe.parentDir() / "tickterm.toml",
-    "tickterm.toml"
-  ]:
+  for p in [home / "tickterm.toml", exe / "tickterm.toml", exe.parentDir() / "tickterm.toml", "tickterm.toml"]:
     if fileExists(p):
       cP = p
       break
 
   if cP == "":
-    quit(&"Error: Missing config in {home}")
+    loadBuiltins(ctx)
+    return
 
-  let t = parseToml.parseFile(cP)
-  let s = if t.hasKey("settings"): t["settings"] else: nil
-
-  template str(n: TomlValueRef, key, fallback: string): string =
-    if n != nil and n.hasKey(key): n[key].getStr() else: fallback
-
-  template bll(n: TomlValueRef, key: string, fallback: bool): bool =
-    if n != nil and n.hasKey(key): n[key].getBool() else: fallback
+  let dict = loadConfig(cP)
+  
+  proc get(section, key, fallback: string): string =
+    dict.getSectionValue(section, key, fallback)
+    
+  proc getBool(section, key: string, fallback: bool): bool =
+    let val = dict.getSectionValue(section, key, "")
+    if val == "": fallback else: parseBool(val)
 
   loadBuiltins(ctx)
 
   ctx.cfg = Config(
-    clock: s.str("time_format", "HH:mm:ss"),
-    accent: s.str("accent_color", "#ffffff"),
-    font: s.str("default_font", "simple"),
-    ruler: s.str("underline_char", "─"),
-    zen: s.bll("zen_mode", false),
-    strip: s.bll("show_underline", true),
-    dated: s.bll("show_date", true),
-    calendar: s.str("date_format", "yyyy-MM-dd"),
-    tint: s.str("date_color", "#aaaaaa"),
-    glow: s.str("underline_color", "#ffffff")
+    clock:    get("settings", "time_format", "HH:mm:ss"),
+    accent:   get("settings", "accent_color", "#ffffff"),
+    font:     get("settings", "default_font", "simple"),
+    ruler:    get("settings", "underline_char", "─"),
+    zen:      getBool("settings", "zen_mode", false),
+    strip:    getBool("settings", "show_underline", true),
+    dated:    getBool("settings", "show_date", true),
+    calendar: get("settings", "date_format", "yyyy-MM-dd"),
+    tint:     get("settings", "date_color", "#aaaaaa"),
+    glow:     get("settings", "underline_color", "#ffffff")
   )
 
 # cool trick
