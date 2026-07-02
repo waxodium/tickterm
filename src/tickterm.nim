@@ -486,7 +486,7 @@ proc tickterm() =
         quit(0)
       
       of "version", "v":
-        echo "0.1.0"
+        echo $VERSION
         quit(0)
       
       of "help", "h":
